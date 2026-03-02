@@ -1,5 +1,6 @@
 """Central Qiskit execution wrapper — dispatches to pre-built circuits."""
 
+import numpy as np
 from qiskit import QuantumCircuit, transpile
 from qiskit_aer import AerSimulator
 
@@ -47,6 +48,9 @@ def get_statevector(algorithm: str, params: dict) -> dict:
     module = _get_circuit_module(algorithm)
     qc = module.build_circuit(params)
 
+    # Record which qubits are measured before removing measurements
+    measured_qubits = list(range(qc.num_clbits))
+
     # Remove measurements for statevector simulation
     qc.remove_final_measurements()
     qc.save_statevector()
@@ -55,13 +59,16 @@ def get_statevector(algorithm: str, params: dict) -> dict:
     transpiled = transpile(qc, simulator)
     result = simulator.run(transpiled).result()
     sv = result.get_statevector()
-    probs = sv.probabilities_dict()
 
+    # Trace out ancilla qubits — only keep probabilities for measured qubits
+    probs = sv.probabilities_dict(qargs=measured_qubits)
+
+    sv_array = np.asarray(sv)
     amplitudes = {}
-    for i, amp in enumerate(sv):
+    for i, amp in enumerate(sv_array):
         label = format(i, f"0{qc.num_qubits}b")
         if abs(amp) > 1e-10:
-            amplitudes[label] = {"real": round(amp.real, 6), "imag": round(amp.imag, 6)}
+            amplitudes[label] = {"real": round(float(amp.real), 6), "imag": round(float(amp.imag), 6)}
 
     return {
         "amplitudes": amplitudes,
