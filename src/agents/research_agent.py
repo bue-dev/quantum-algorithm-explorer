@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 
 import anthropic
 
@@ -67,8 +68,12 @@ implemented and runnable.
 
 Available algorithm keys: grovers_search, deutsch_jozsa, bernstein_vazirani, qft, qaoa, vqe
 
-After using the tools, respond with a JSON object (no markdown, no code fences) \
-with exactly these fields:
+IMPORTANT: The simulator is limited to 6 qubits maximum. Always set num_qubits \
+to 6 or fewer in algorithm_params. For example, use num_qubits=4 for Grover's \
+search to demonstrate the algorithm on a 16-item search space.
+
+After using the tools, respond with ONLY a JSON object (no preamble, no markdown, \
+no code fences, no explanation before or after) with exactly these fields:
 - chosen_algorithm: string, must be one of the algorithm keys from the catalog
 - algorithm_params: object, parameters for the circuit (must match the algorithm's expected params)
 - reasoning: string, 2-3 sentences explaining why this algorithm fits
@@ -164,5 +169,28 @@ def analyze(problem: str, config: Config) -> AlgorithmRecommendation:
         text = text[:-3]
     text = text.strip()
 
-    data = json.loads(text)
+    if not text:
+        raise ValueError(
+            "Research Agent returned empty response. "
+            "Check your API key and model name."
+        )
+
+    # Try direct parse first; if that fails, extract the first JSON object
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", text, re.DOTALL)
+        if not match:
+            raise ValueError(
+                f"No JSON object found in Research Agent response.\n"
+                f"Raw response: {text[:500]}"
+            )
+        try:
+            data = json.loads(match.group())
+        except json.JSONDecodeError as e:
+            raise ValueError(
+                f"Failed to parse Research Agent JSON: {e}\n"
+                f"Raw response: {text[:500]}"
+            ) from e
+
     return AlgorithmRecommendation(**data)

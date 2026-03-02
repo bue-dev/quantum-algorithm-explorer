@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 
 import anthropic
 
@@ -201,5 +202,25 @@ def simulate(
         text = text[:-3]
     text = text.strip()
 
-    data = json.loads(text)
+    if not text:
+        raise ValueError("Simulation Agent returned empty response.")
+
+    # Try direct parse first; if that fails, extract the first JSON object
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", text, re.DOTALL)
+        if not match:
+            raise ValueError(
+                f"No JSON object found in Simulation Agent response.\n"
+                f"Raw response: {text[:500]}"
+            )
+        try:
+            data = json.loads(match.group())
+        except json.JSONDecodeError as e:
+            raise ValueError(
+                f"Failed to parse Simulation Agent JSON: {e}\n"
+                f"Raw response: {text[:500]}"
+            ) from e
+
     return SimulationResult(**data)
